@@ -1,0 +1,5 @@
+streamlit>=1.38
+pandas>=2.2
+SQLAlchemy>=2.0
+streamlit-calendar>=1.4
+bcrypt>=4.1
