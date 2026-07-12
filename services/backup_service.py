@@ -16,14 +16,11 @@ class InvalidBackupFileError(Exception):
     pass
 
 
-def _checkpoint_wal() -> None:
-    """Schreibt ausstehende WAL-Änderungen in die Haupt-.db-Datei, bevor ihre Bytes gelesen werden."""
-    with get_engine().connect() as conn:
-        conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+def _wal_sidecar_paths() -> list[Path]:
+    return [DB_PATH.with_name(DB_PATH.name + "-wal"), DB_PATH.with_name(DB_PATH.name + "-shm")]
 
 
 def export_db_bytes() -> bytes:
-    _checkpoint_wal()
     return DB_PATH.read_bytes()
 
 
@@ -67,10 +64,16 @@ def restore_from_upload(data: bytes) -> Path:
 
     safety_copy_path = DB_PATH.parent / f"trailpark_pre_restore_{datetime.now():%Y%m%d%H%M%S}.db"
     if DB_PATH.exists():
-        _checkpoint_wal()
         safety_copy_path.write_bytes(DB_PATH.read_bytes())
 
     reset_engine()
+
+    # Alte -wal/-shm-Nebendateien entfernen, damit keine veralteten WAL-Daten
+    # (z.B. von einer noch im WAL-Modus laufenden alten Datenbank) mit der
+    # gerade wiederhergestellten .db-Datei kollidieren.
+    for sidecar in _wal_sidecar_paths():
+        sidecar.unlink(missing_ok=True)
+
     DB_PATH.write_bytes(data)
     reset_engine()
 

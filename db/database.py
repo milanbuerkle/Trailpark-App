@@ -43,8 +43,15 @@ def get_engine():
 
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(dbapi_connection, connection_record):
+        # Bewusst kein WAL-Modus: bei dieser Größenordnung (wenige gleichzeitige
+        # Nutzer) bringt WAL kaum Vorteile, hat aber wiederholt Probleme beim
+        # Backup/Restore verursacht (separate -wal-Datei kann mit einer per
+        # Restore ausgetauschten .db-Datei kollidieren). Der Default-Journal-
+        # Modus hält die .db-Datei immer selbstständig konsistent.
         cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
+        # journal_mode ist eine dauerhafte Eigenschaft der .db-Datei selbst –
+        # explizit zurücksetzen, falls eine ältere Datenbank noch im WAL-Modus ist.
+        cursor.execute("PRAGMA journal_mode=DELETE")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
