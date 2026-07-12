@@ -9,6 +9,7 @@ from services.termin_service import (
     CapacityFullError,
     DuplicateTeilnahmeError,
     NotRegisteredError,
+    TerminCancelledError,
     TooManyUpcomingSignupsError,
     cancel_signup,
     count_upcoming_signups,
@@ -23,6 +24,7 @@ from utils.session import current_trainer
 FARBE_GESUCHT = "#e63946"  # niemand angemeldet
 FARBE_TEILWEISE = "#f4a261"  # teilweise belegt
 FARBE_VOLL = "#2a9d8f"  # voll besetzt
+FARBE_ABGESAGT = "#6c757d"  # abgesagt
 
 CALENDAR_CSS = """
 .fc {
@@ -52,6 +54,9 @@ CALENDAR_CSS = """
 .fc-daygrid-day.fc-day-today, .fc-timegrid-col.fc-day-today {
     background-color: rgba(42, 157, 143, 0.08) !important;
 }
+.termin-abgesagt .fc-event-title {
+    text-decoration: line-through;
+}
 """
 
 LEGENDE_HTML = """
@@ -62,8 +67,10 @@ LEGENDE_HTML = """
     background:{teilweise};margin-right:6px;"></span>Teilweise belegt</span>
   <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;
     background:{voll};margin-right:6px;"></span>Voll besetzt</span>
+  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;
+    background:{abgesagt};margin-right:6px;"></span>Abgesagt</span>
 </div>
-""".format(gesucht=FARBE_GESUCHT, teilweise=FARBE_TEILWEISE, voll=FARBE_VOLL)
+""".format(gesucht=FARBE_GESUCHT, teilweise=FARBE_TEILWEISE, voll=FARBE_VOLL, abgesagt=FARBE_ABGESAGT)
 
 
 def _termin_farbe(registered_count: int, needed: int) -> str:
@@ -79,15 +86,23 @@ def _build_events() -> list[dict]:
     for termin in list_termine():
         start = datetime.combine(termin.date, termin.start_time).isoformat()
         end = datetime.combine(termin.date, termin.end_time).isoformat()
-        farbe = _termin_farbe(termin.registered_count, termin.needed_trainers)
+        if termin.cancelled:
+            farbe = FARBE_ABGESAGT
+            title = f"ABGESAGT: {termin.title}"
+            class_names = ["termin-abgesagt"]
+        else:
+            farbe = _termin_farbe(termin.registered_count, termin.needed_trainers)
+            title = f"{termin.title} ({termin.registered_count}/{termin.needed_trainers})"
+            class_names = []
         events.append(
             {
                 "id": str(termin.id),
-                "title": f"{termin.title} ({termin.registered_count}/{termin.needed_trainers})",
+                "title": title,
                 "start": start,
                 "end": end,
                 "backgroundColor": farbe,
                 "borderColor": farbe,
+                "classNames": class_names,
             }
         )
     return events
@@ -108,6 +123,8 @@ def _termin_dialog(termin_id: int) -> None:
         return
 
     st.subheader(termin.title)
+    if termin.cancelled:
+        st.error("⚠️ Dieser Termin wurde abgesagt.")
     st.markdown(
         f"📅 {termin.date.strftime('%d.%m.%Y')}  \n"
         f"🕐 {termin.start_time.strftime('%H:%M')} – {termin.end_time.strftime('%H:%M')} Uhr  \n"
@@ -137,6 +154,8 @@ def _termin_dialog(termin_id: int) -> None:
                     st.rerun()
                 except NotRegisteredError:
                     st.error("Du bist für diesen Termin nicht angemeldet.")
+        elif termin.cancelled:
+            st.caption("Der Termin ist abgesagt, eine Anmeldung ist nicht möglich.")
         elif termin.is_full:
             st.warning("Termin ist bereits voll besetzt.")
         else:
@@ -150,6 +169,8 @@ def _termin_dialog(termin_id: int) -> None:
                     st.warning("Termin ist bereits voll besetzt.")
                 except AlreadyRegisteredError:
                     st.error("Du bist bereits für diesen Termin angemeldet.")
+                except TerminCancelledError:
+                    st.error("Der Termin wurde inzwischen abgesagt.")
                 except TooManyUpcomingSignupsError:
                     st.warning(
                         f"Du bist bereits für {MAX_UPCOMING_SIGNUPS} kommende Termine angemeldet. "
@@ -173,18 +194,23 @@ def _termin_dialog(termin_id: int) -> None:
     else:
         st.caption("Noch kein Teilnehmer angemeldet.")
 
-    with st.form(f"teilnehmer_form_{termin.id}", clear_on_submit=True):
-        teilnehmer_name = st.text_input("Dein Name")
-        teilnehmer_email = st.text_input("Deine E-Mail") if termin.email_required else ""
-        teilnehmer_submitted = st.form_submit_button("Als Teilnehmer anmelden")
-    if teilnehmer_submitted:
-        try:
-            teilnehmer_anmelden(termin.id, teilnehmer_name, teilnehmer_email)
-            st.rerun()
-        except ValueError as exc:
-            st.error(str(exc))
-        except DuplicateTeilnahmeError:
-            st.info("Du stehst schon auf der Liste.")
+    if termin.cancelled:
+        st.caption("Der Termin ist abgesagt, eine Anmeldung ist nicht möglich.")
+    else:
+        with st.form(f"teilnehmer_form_{termin.id}", clear_on_submit=True):
+            teilnehmer_name = st.text_input("Dein Name")
+            teilnehmer_email = st.text_input("Deine E-Mail") if termin.email_required else ""
+            teilnehmer_submitted = st.form_submit_button("Als Teilnehmer anmelden")
+        if teilnehmer_submitted:
+            try:
+                teilnehmer_anmelden(termin.id, teilnehmer_name, teilnehmer_email)
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+            except DuplicateTeilnahmeError:
+                st.info("Du stehst schon auf der Liste.")
+            except TerminCancelledError:
+                st.error("Der Termin wurde inzwischen abgesagt.")
 
     if st.button("Schließen"):
         st.session_state["selected_termin_id"] = None

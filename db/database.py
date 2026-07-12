@@ -69,6 +69,7 @@ def get_sessionmaker():
 _COLUMN_MIGRATIONS = [
     ("termin", "email_required", "BOOLEAN NOT NULL DEFAULT 0"),
     ("teilnahme", "email", "VARCHAR(255)"),
+    ("termin", "cancelled", "BOOLEAN NOT NULL DEFAULT 0"),
 ]
 
 

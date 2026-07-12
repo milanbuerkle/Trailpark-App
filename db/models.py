@@ -50,6 +50,7 @@ class Termin(Base):
     location: Mapped[str] = mapped_column(String(200), nullable=False)
     needed_trainers: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     email_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    cancelled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by_trainer_id: Mapped[int] = mapped_column(ForeignKey("trainer.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 

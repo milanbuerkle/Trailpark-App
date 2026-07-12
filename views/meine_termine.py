@@ -4,8 +4,10 @@ from services.termin_service import (
     NotCreatorError,
     NotRegisteredError,
     cancel_signup,
+    cancel_termin,
     delete_termin,
     list_my_termine,
+    reactivate_termin,
     update_termin,
 )
 from utils.session import current_trainer
@@ -71,21 +73,36 @@ def render() -> None:
         st.caption("Du hast noch keine Termine erstellt.")
     for termin in erstellt:
         with st.container(border=True):
+            if termin.cancelled:
+                st.caption("🔴 ABGESAGT")
             st.write(
                 f"**{termin.title}** – {termin.date.strftime('%d.%m.%Y')} "
                 f"{termin.start_time.strftime('%H:%M')}–{termin.end_time.strftime('%H:%M')}, {termin.location}"
             )
             st.caption(f"{termin.registered_count} von {termin.needed_trainers} Plätzen belegt")
             _render_edit_form(termin, trainer.id)
-            if st.button("Termin löschen", key=f"delete_{termin.id}"):
-                delete_termin(termin.id, trainer.id)
-                st.rerun()
+            col_cancel, col_delete = st.columns(2)
+            with col_cancel:
+                if termin.cancelled:
+                    if st.button("Absage zurücknehmen", key=f"reactivate_{termin.id}"):
+                        reactivate_termin(termin.id, trainer.id)
+                        st.rerun()
+                else:
+                    if st.button("Termin absagen", key=f"cancel_termin_{termin.id}"):
+                        cancel_termin(termin.id, trainer.id)
+                        st.rerun()
+            with col_delete:
+                if st.button("Termin löschen", key=f"delete_{termin.id}"):
+                    delete_termin(termin.id, trainer.id)
+                    st.rerun()
 
     st.subheader("Meine Anmeldungen")
     if not angemeldet:
         st.caption("Du bist für keinen Termin angemeldet.")
     for termin in angemeldet:
         with st.container(border=True):
+            if termin.cancelled:
+                st.caption("🔴 ABGESAGT")
             st.write(
                 f"**{termin.title}** – {termin.date.strftime('%d.%m.%Y')} "
                 f"{termin.start_time.strftime('%H:%M')}–{termin.end_time.strftime('%H:%M')}, {termin.location}"

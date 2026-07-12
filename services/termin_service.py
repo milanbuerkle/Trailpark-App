@@ -30,6 +30,10 @@ class DuplicateTeilnahmeError(Exception):
     pass
 
 
+class TerminCancelledError(Exception):
+    pass
+
+
 MAX_UPCOMING_SIGNUPS = 3
 
 
@@ -44,6 +48,7 @@ class TerminInfo:
     location: str
     needed_trainers: int
     email_required: bool
+    cancelled: bool
     created_by_trainer_id: int
     created_by_name: str
     registered_trainer_names: tuple[str, ...]
@@ -77,6 +82,7 @@ def _to_info(termin: Termin) -> TerminInfo:
         location=termin.location,
         needed_trainers=termin.needed_trainers,
         email_required=termin.email_required,
+        cancelled=termin.cancelled,
         created_by_trainer_id=termin.created_by_trainer_id,
         created_by_name=termin.ersteller.name,
         registered_trainer_names=tuple(a.trainer.name for a in termin.anmeldungen),
@@ -168,6 +174,26 @@ def update_termin(
         termin.email_required = email_required
 
 
+def cancel_termin(termin_id: int, trainer_id: int) -> None:
+    with get_session() as session:
+        termin = session.get(Termin, termin_id)
+        if termin is None:
+            raise ValueError("Termin wurde nicht gefunden.")
+        if termin.created_by_trainer_id != trainer_id:
+            raise NotCreatorError()
+        termin.cancelled = True
+
+
+def reactivate_termin(termin_id: int, trainer_id: int) -> None:
+    with get_session() as session:
+        termin = session.get(Termin, termin_id)
+        if termin is None:
+            raise ValueError("Termin wurde nicht gefunden.")
+        if termin.created_by_trainer_id != trainer_id:
+            raise NotCreatorError()
+        termin.cancelled = False
+
+
 def delete_termin(termin_id: int, trainer_id: int) -> None:
     with get_session() as session:
         termin = session.get(Termin, termin_id)
@@ -193,6 +219,8 @@ def sign_up(termin_id: int, trainer_id: int) -> None:
         termin = session.get(Termin, termin_id)
         if termin is None:
             raise ValueError("Termin wurde nicht gefunden.")
+        if termin.cancelled:
+            raise TerminCancelledError()
 
         already = (
             session.query(Anmeldung)
@@ -242,6 +270,8 @@ def teilnehmer_anmelden(termin_id: int, name: str, email: str | None = None) -> 
         termin = session.get(Termin, termin_id)
         if termin is None:
             raise ValueError("Termin wurde nicht gefunden.")
+        if termin.cancelled:
+            raise TerminCancelledError()
 
         if termin.email_required:
             if not email:
