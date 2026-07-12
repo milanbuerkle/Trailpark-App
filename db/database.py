@@ -1,3 +1,4 @@
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -7,7 +8,30 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from db.models import Base
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+def _resolve_data_dir() -> Path:
+    """Nutzt den Projekt-Ordner `data/`, falls beschreibbar (lokale Entwicklung).
+
+    Auf manchen Hosting-Umgebungen (z.B. Streamlit Community Cloud) ist der
+    aus Git geklonte Projektordner read-only – dort weicht die App auf ein
+    beschreibbares Temp-Verzeichnis aus. Das Datenverzeichnis ist auf
+    Streamlit Cloud ohnehin nicht dauerhaft (siehe Backup/Restore-Runbook im
+    README), daher ist ein Temp-Ordner dort kein zusätzlicher Nachteil.
+    """
+    project_data_dir = Path(__file__).resolve().parent.parent / "data"
+    try:
+        project_data_dir.mkdir(parents=True, exist_ok=True)
+        probe = project_data_dir / ".write_test"
+        probe.touch()
+        probe.unlink()
+        return project_data_dir
+    except OSError:
+        fallback_dir = Path(tempfile.gettempdir()) / "trailpark_app_data"
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        return fallback_dir
+
+
+DATA_DIR = _resolve_data_dir()
 DB_PATH = DATA_DIR / "trailpark.db"
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
